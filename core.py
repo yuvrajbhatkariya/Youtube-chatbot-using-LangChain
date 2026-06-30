@@ -16,8 +16,22 @@ from youtube_transcript_api import (
 from dotenv import load_dotenv
 load_dotenv()
 
+# EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
+# embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
-embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+
+_embeddings = None
+
+def get_embeddings():
+    global _embeddings
+
+    if _embeddings is None:
+        _embeddings = HuggingFaceEmbeddings(
+            model_name=EMBEDDING_MODEL
+        )
+
+    return _embeddings
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 model = ChatGoogleGenerativeAI(
