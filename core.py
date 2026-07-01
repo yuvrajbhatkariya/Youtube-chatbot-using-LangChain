@@ -169,7 +169,7 @@ def get_or_build_index(video_id: str):
         for c in chunks
     ]
 
-    vector_store = FAISS.from_documents(documents=docs, embedding=get_embeddings)
+    vector_store = FAISS.from_documents(documents=docs, embedding=get_embeddings())
     _video_index_cache[video_id] = vector_store
     return vector_store
 
