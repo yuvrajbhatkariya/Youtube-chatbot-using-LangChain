@@ -1,6 +1,8 @@
+// popup.js
 const API_BASE_URL = "https://youtube-chatbot-using-langchain-dw3d.onrender.com";
 
-const YOUTUBE_VIDEO_PATTERN = /^https?:\/\/(www\.)?(youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/shorts\/)/;
+const YOUTUBE_VIDEO_PATTERN =
+  /^https?:\/\/(www\.)?(youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/shorts\/)/;
 
 let currentUrl = "";
 
@@ -11,12 +13,8 @@ document.getElementById("question").addEventListener("keydown", (e) => {
 });
 
 async function init() {
-  // "activeTab" permission gives us access to the active tab's URL here,
-  // since opening the popup counts as the user invoking the extension --
-  // no content script / messaging round-trip needed for this.
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   currentUrl = tab?.url || "";
-
   const statusEl = document.getElementById("video-status");
   if (YOUTUBE_VIDEO_PATTERN.test(currentUrl)) {
     statusEl.textContent = "Ready -- ask away.";
@@ -42,13 +40,35 @@ async function askQuestion() {
 
   askBtn.disabled = true;
   askBtn.textContent = "Thinking...";
-  answerEl.innerHTML = `<p class="loading">Looking through the transcript...</p>`;
 
   try {
+    // STEP 1: Ask content.js (running inside YouTube page) for the transcript.
+    // This never hits a cloud server -- it's the browser reading YouTube's own
+    // page data. YouTube can't block it.
+    answerEl.innerHTML = `<p class="loading">Fetching transcript from YouTube...</p>`;
+
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const transcriptResult = await chrome.tabs.sendMessage(tab.id, {
+      type: "GET_TRANSCRIPT",
+    });
+
+    if (transcriptResult?.error) {
+      throw new Error(transcriptResult.error);
+    }
+
+    // STEP 2: Send transcript segments + question to your backend.
+    // Backend does chunking, embedding, FAISS, retrieval, Gemini -- all the
+    // heavy AI work. It just never has to touch YouTube's servers itself.
+    answerEl.innerHTML = `<p class="loading">Thinking about your question...</p>`;
+
     const res = await fetch(`${API_BASE_URL}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: currentUrl, question }),
+      body: JSON.stringify({
+        url: currentUrl,
+        question,
+        segments: transcriptResult.segments, // <-- new field
+      }),
     });
 
     if (!res.ok) {
@@ -56,10 +76,12 @@ async function askQuestion() {
       throw new Error(err.detail || `Server error (${res.status})`);
     }
 
-    const data = await res.json();
-    renderAnswer(data);
+    renderAnswer(await res.json());
+
   } catch (err) {
-    answerEl.innerHTML = `<p class="error">${escapeHtml(err.message || "Something went wrong. Is the backend running?")}</p>`;
+    answerEl.innerHTML = `<p class="error">${escapeHtml(
+      err.message || "Something went wrong."
+    )}</p>`;
   } finally {
     askBtn.disabled = false;
     askBtn.textContent = "Ask";
@@ -69,7 +91,6 @@ async function askQuestion() {
 function renderAnswer(data) {
   const answerEl = document.getElementById("answer");
   let html = `<p class="answer-text">${escapeHtml(data.answer || "")}</p>`;
-
   if (data.citations && data.citations.length > 0) {
     html += `<div class="citations"><strong>Mentioned at:</strong><ul>`;
     for (const c of data.citations) {
@@ -77,7 +98,6 @@ function renderAnswer(data) {
     }
     html += `</ul></div>`;
   }
-
   answerEl.innerHTML = html;
 }
 

@@ -2,16 +2,11 @@ import os
 from urllib.parse import urlparse, parse_qs
 from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate
-from langchain_core.runnables import RunnableParallel, RunnablePassthrough, RunnableLambda
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
-from youtube_transcript_api import (
-    YouTubeTranscriptApi,
-    NoTranscriptFound,
-    TranscriptsDisabled,
-)
+
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -70,7 +65,7 @@ Answer:
 parser = StrOutputParser()
 
 
-# 1. Extract the transcript : -
+# 1. Extract the vedio id  : -
 
 def extract_video_id(url: str):
     try:
@@ -105,26 +100,6 @@ def extract_video_id(url: str):
         return None
 
 
-def get_transcript_segments(video_id: str):
-    api = YouTubeTranscriptApi()
-
-    try:
-        transcript_list = api.list(video_id)
-
-        try:
-            transcript = transcript_list.find_transcript(["en", "en-US", "en-GB"])
-        except NoTranscriptFound:
-            transcript = next(iter(transcript_list))
-            if transcript.is_translatable:
-                transcript = transcript.translate("en")
-
-        fetched = transcript.fetch()
-        return [{"text": item.text, "start": item.start} for item in fetched]
-
-    except TranscriptsDisabled:
-        return None
-    except NoTranscriptFound:
-        return None
 
 
 # 2. Split the transcript (Custom chunker that preserves the timestamp):-
@@ -155,21 +130,25 @@ def chunk_transcript_with_timestamps(segments, chunk_size=1200, chunk_overlap=20
 
 # 3. Index build + cache
 
-def get_or_build_index(video_id: str):
+def build_index_from_segments(video_id: str, segments: list):
     if video_id in _video_index_cache:
         return _video_index_cache[video_id]
 
-    segments = get_transcript_segments(video_id)
-    if not segments:
-        return None
-
     chunks = chunk_transcript_with_timestamps(segments)
+
     docs = [
-        Document(page_content=c["text"], metadata={"start": c["start"]})
+        Document(
+            page_content=c["text"],
+            metadata={"start": c["start"]}
+        )
         for c in chunks
     ]
 
-    vector_store = FAISS.from_documents(documents=docs, embedding=get_embeddings())
+    vector_store = FAISS.from_documents(
+        documents=docs,
+        embedding=get_embeddings()
+    )
+
     _video_index_cache[video_id] = vector_store
     return vector_store
 
@@ -183,54 +162,67 @@ def format_timestamp(seconds: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
 
 
-def format_docs_with_sources(docs):
-    context_text = "\n\n".join(doc.page_content for doc in docs)
-    starts = [doc.metadata.get("start") for doc in docs if doc.metadata.get("start") is not None]
-    return context_text, starts
 
 
-def build_citations(video_id: str, starts, limit: int = 3):
+def build_citations(video_id: str, docs, limit=3):
+
     seen = set()
     citations = []
-    for start in starts:
+
+    for doc in docs:
+
+        start = doc.metadata.get("start")
+
+        if start is None:
+            continue
+
         rounded = int(start)
+
         if rounded in seen:
             continue
+
         seen.add(rounded)
-        citations.append({
-            "time": format_timestamp(start),
-            "seconds": rounded,
-            "url": f"https://youtu.be/{video_id}?t={rounded}",
-        })
+
+        citations.append(
+            {
+                "time": format_timestamp(start),
+                "seconds": rounded,
+                "url": f"https://youtu.be/{video_id}?t={rounded}",
+            }
+        )
+
         if len(citations) >= limit:
             break
+
     return citations
 
 
 # 5. Full chain : retrieve -> prompt -> LLM -> parse
 
-def answer_question(video_id: str, question: str):
+def answer_question(video_id: str, question: str, segments: list):
 
-    vector_store = get_or_build_index(video_id)
-    if vector_store is None:
-        return "I couldn't fetch a transcript for this video (it may have transcripts disabled).", []
+    vector_store = build_index_from_segments(video_id, segments)
 
     retriever = vector_store.as_retriever(
         search_type="mmr",
-        search_kwargs={"k": 6, "fetch_k": 10, "lambda_mult": 0.9},
+        search_kwargs={
+            "k": 6,
+            "fetch_k": 10,
+            "lambda_mult": 0.9,
+        },
     )
-    retrieved_docs = retriever.invoke(question)
-    context_text, starts = format_docs_with_sources(retrieved_docs)
 
-    # final_prompt = PROMPT.invoke({"context": context_text, "question": question})
-    # result = model.invoke(final_prompt)
-    # answer = parser.invoke(result)
+    docs = retriever.invoke(question)
 
-    chain = PROMPT | model | parser
-    answer = chain.invoke({
-        "context": context_text,
-        "question": question,
-    })
+    context = "\n\n".join(doc.page_content for doc in docs)
 
-    citations = build_citations(video_id, starts)
+    answer = (PROMPT | model | parser).invoke(
+        {
+            "context": context,
+            "question": question,
+        }
+    )
+
+    citations = build_citations(video_id, docs)
+
     return answer, citations
