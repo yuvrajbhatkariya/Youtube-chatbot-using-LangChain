@@ -17,7 +17,7 @@ async function init() {
   currentUrl = tab?.url || "";
   const statusEl = document.getElementById("video-status");
   if (YOUTUBE_VIDEO_PATTERN.test(currentUrl)) {
-    statusEl.textContent = "Ready -- ask away.";
+    statusEl.textContent = "Ready - ask away.";
     statusEl.className = "status ok";
   } else {
     statusEl.textContent = "Open a YouTube video to use this.";
