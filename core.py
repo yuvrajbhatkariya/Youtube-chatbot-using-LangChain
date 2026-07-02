@@ -13,7 +13,7 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # Gemini embedding -- free tier, no local model, no RAM cost
 embeddings = GoogleGenerativeAIEmbeddings(
-    model="models/text-embedding-001",
+    model="text-embedding-001",
     google_api_key=GOOGLE_API_KEY,
 )
 
