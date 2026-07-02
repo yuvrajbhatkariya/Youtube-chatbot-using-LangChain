@@ -1,10 +1,18 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
-from core import extract_video_id, answer_question
+from core import extract_video_id, answer_question, get_embeddings
 
-app = FastAPI(title="YouTube RAG Chatbot API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("Loading embedding model...")
+    get_embeddings()          # warms up the model before any request arrives
+    print("Embedding model ready.")
+    yield
+
+app = FastAPI(title="YouTube RAG Chatbot API", lifespan=lifespan)
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"],
                    allow_methods=["*"], allow_headers=["*"])
@@ -16,7 +24,7 @@ class Segment(BaseModel):
 class ChatRequest(BaseModel):
     url: str
     question: str
-    segments: List[Segment]   
+    segments: List[Segment]
 
 @app.get("/health")
 def health():
