@@ -3,16 +3,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
-from core import extract_video_id, answer_question, get_embeddings
+from core import extract_video_id, answer_question
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    print("Loading embedding model...")
-    get_embeddings()          # warms up the model before any request arrives
-    print("Embedding model ready.")
-    yield
 
-app = FastAPI(title="YouTube RAG Chatbot API", lifespan=lifespan)
+app = FastAPI(title="YouTube RAG Chatbot API")
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"],
                    allow_methods=["*"], allow_headers=["*"])

@@ -11,10 +11,10 @@ langchain-google-genai
 youtube-transcript-api
 faiss-cpu
 
---extra-index-url https://download.pytorch.org/whl/cpu
-torch
-sentence-transformers
-transformers
-huggingface-hub
+# --extra-index-url https://download.pytorch.org/whl/cpu
+# torch
+# sentence-transformers
+# transformers
+# huggingface-hub
 
 google-generativeai

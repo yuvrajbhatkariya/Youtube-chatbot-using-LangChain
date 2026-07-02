@@ -4,8 +4,9 @@ from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.vectorstores import FAISS
-from langchain_huggingface import HuggingFaceEmbeddings
+# from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 
 from dotenv import load_dotenv
@@ -14,19 +15,24 @@ load_dotenv()
 # EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 # embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
 
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
+# EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 
-_embeddings = None
+# _embeddings = None
 
-def get_embeddings():
-    global _embeddings
+# def get_embeddings():
+#     global _embeddings
 
-    if _embeddings is None:
-        _embeddings = HuggingFaceEmbeddings(
-            model_name=EMBEDDING_MODEL
-        )
+#     if _embeddings is None:
+#         _embeddings = HuggingFaceEmbeddings(
+#             model_name=EMBEDDING_MODEL
+#         )
 
-    return _embeddings
+#     return _embeddings
+
+embeddings = GoogleGenerativeAIEmbeddings(
+    model="models/text-embedding-004",
+    google_api_key=os.getenv("GOOGLE_API_KEY"),
+)
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 model = ChatGoogleGenerativeAI(
@@ -146,7 +152,7 @@ def build_index_from_segments(video_id: str, segments: list):
 
     vector_store = FAISS.from_documents(
         documents=docs,
-        embedding=get_embeddings()
+        embedding=embeddings
     )
 
     _video_index_cache[video_id] = vector_store
